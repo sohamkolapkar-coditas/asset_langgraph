@@ -174,15 +174,29 @@ Case B — Tool returns a list with exactly 1 asset dict:
 
 Case C — Tool returns a list with 2 or more asset dicts:
   The employee has multiple laptops. You must determine which laptop(s) to target.
-  Read `email_body` and `chat_history` carefully for a target indication.
 
-  Sub-case C1 — User says "both", "all", or any equivalent phrasing:
+  CRITICAL NEGATIVE RULES — read before evaluating any sub-case:
+    - Saying "my laptop", "the laptop", or any generic singular reference WITHOUT naming
+      an asset code does NOT count as specifying a laptop. It must be treated as C3.
+    - Only an explicit asset code string that appears in the returned list (e.g. "LP-07",
+      "LP-12") counts as specifying a laptop for Sub-case C2.
+    - DO NOT infer, guess, or default to the first laptop in the list.
+    - DO NOT proceed to Step 3 unless C1 or C2 is unambiguously satisfied.
+
+  DECISION TREE — check in this exact order:
+    CHECK A: Does email_body or chat_history contain a valid asset code from the returned
+             list (e.g. "LP-07", "LP-12")? If yes → Sub-case C2.
+    CHECK B: Does email_body or chat_history contain "both", "all", or an equivalent
+             phrase meaning every laptop? If yes → Sub-case C1.
+    CHECK C: Neither CHECK A nor CHECK B is satisfied? → Sub-case C3. MUST STOP.
+
+  Sub-case C1 — CHECK B matched ("both", "all", or equivalent phrasing):
     Install on ALL laptops. Collect all asset_codes from the returned list.
     Set target_laptops = all asset_codes (e.g. ["LP-07", "LP-12"]).
     DO NOT call check_user_asset_code.
     Continue to Step 3.
 
-  Sub-case C2 — User mentions exactly one specific asset code (e.g. "LP-07"):
+  Sub-case C2 — CHECK A matched (exactly one asset code explicitly named):
     Call check_user_asset_code(asset_code=<mentioned_code>, user_id=<user_id>).
     If tool returns a dict:
       → Asset verified. Set target_laptops = [asset_code].
@@ -198,8 +212,9 @@ Case C — Tool returns a list with 2 or more asset dicts:
                          '<mentioned_code>' but check_user_asset_code returned not found.
                          Sent correction email with valid codes."
 
-  Sub-case C3 — No specific laptop mentioned and no "both"/"all" phrasing:
-    STOP. The user must clarify before a ticket can be raised.
+  Sub-case C3 — CHECK C: Neither CHECK A nor CHECK B is satisfied:
+    STOP IMMEDIATELY. The user must clarify before a ticket can be raised.
+    DO NOT proceed to Step 3. DO NOT default to the first laptop. DO NOT guess.
     Produce final output:
       next           = "email"
       email_response = a polite message informing the user they have multiple laptops
@@ -209,6 +224,18 @@ Case C — Tool returns a list with 2 or more asset dicts:
       messages       = "Multiple laptops found for user_id <user_id>: <all_asset_codes>.
                         No target laptop specified in email or chat_history. Sent
                         clarification email."
+
+  INLINE EXAMPLE — "my laptop" without an asset code (triggers C3, NOT C2):
+    email_body: "Can you install Slack on my laptop please?"
+    user_asset returned: [{"asset_code": "LP-07", ...}, {"asset_code": "LP-12", ...}]
+    CHECK A: "my laptop" contains no asset code string from the list → fails.
+    CHECK B: No "both" or "all" phrasing → fails.
+    CHECK C: Satisfied → Sub-case C3. STOP. Send clarification email listing LP-07 and LP-12.
+    WRONG behaviour: proceeding to Step 3 or calling check_user_asset_code.
+
+  IMPORTANT ENFORCEMENT: If neither C1 nor C2 conditions are clearly met, you MUST execute
+  C3. Do NOT infer which laptop was meant. Do NOT default to the first laptop. Do NOT proceed
+  to Step 3. Failure to stop here is a critical workflow error.
 
 EXAMPLES:
   user_asset(user_id="u-123", asset_category_id="9198f973-...")
@@ -537,6 +564,59 @@ Output:
 
 ---
 
+SCENARIO G2 — Two laptops, user uses a qualifier but no asset code ("work laptop", "primary laptop")
+Input excerpt:
+  email_subject: "Zoom installation request"
+  email_body: "Hi team, please install Zoom on my work laptop. Thanks."
+  user_id: "u-abc-123"
+  plan: "Software request for Zoom."
+
+Step 0: plan names software hint = "Zoom".
+Step 1: check_category(name="laptop")
+        → {"id": "9198f973-dfe3-40e0-8275-3e441cabd0dd", "name": "Laptop", "quantity": 42}
+        → laptop_category_uuid = "9198f973-dfe3-40e0-8275-3e441cabd0dd". Proceed.
+Step 2: user_asset(user_id="u-abc-123", asset_category_id="9198f973-dfe3-40e0-8275-3e441cabd0dd")
+        → [{"asset_code": "LP-07", "status": "ASSIGNED", "location": "NYATI"},
+           {"asset_code": "LP-12", "status": "ASSIGNED", "location": "NYATI"}]
+        → 2 laptops returned.
+        DECISION TREE:
+        CHECK A: "my work laptop" — contains no asset code from the returned list (LP-07, LP-12) → fails.
+        CHECK B: No "both" or "all" phrasing → fails.
+        CHECK C: Neither A nor B satisfied → Sub-case C3. STOP.
+        NOTE: "work laptop" is a qualifier, NOT an asset code. It does not map to LP-07 or LP-12.
+              Do NOT guess which laptop is the "work" one. Do NOT proceed to Step 3.
+
+Output:
+{"next": "email", "messages": "check_category('laptop') returned UUID 9198f973-dfe3-40e0-8275-3e441cabd0dd. Multiple laptops found for user_id u-abc-123: LP-07 (ASSIGNED, NYATI), LP-12 (ASSIGNED, NYATI). User said 'my work laptop' — this is a qualifier, not an asset code; CHECK A fails. No 'both'/'all' phrasing; CHECK B fails. Sub-case C3: STOP. Sent clarification email.", "email_response": "Thank you for your request. We can see that you have two laptops assigned to your account — LP-07 and LP-12. To process the Zoom installation, could you please let us know the asset code of the laptop you'd like it installed on (e.g. LP-07 or LP-12), or let us know if you'd like it installed on both? We'll get this sorted as soon as you reply."}
+
+---
+
+SCENARIO G3 — Two laptops, user does not mention a specific laptop at all
+Input excerpt:
+  email_subject: "Please install Postman"
+  email_body: "Hey, I need Postman installed please. Let me know once it's done."
+  user_id: "u-abc-123"
+  plan: "Software request for Postman."
+
+Step 0: plan names software hint = "Postman".
+Step 1: check_category(name="laptop")
+        → {"id": "9198f973-dfe3-40e0-8275-3e441cabd0dd", "name": "Laptop", "quantity": 42}
+        → laptop_category_uuid = "9198f973-dfe3-40e0-8275-3e441cabd0dd". Proceed.
+Step 2: user_asset(user_id="u-abc-123", asset_category_id="9198f973-dfe3-40e0-8275-3e441cabd0dd")
+        → [{"asset_code": "LP-07", "status": "ASSIGNED", "location": "NYATI"},
+           {"asset_code": "LP-12", "status": "ASSIGNED", "location": "GAIA"}]
+        → 2 laptops returned.
+        DECISION TREE:
+        CHECK A: email_body contains no asset code string (LP-07, LP-12) at all → fails.
+        CHECK B: No "both" or "all" phrasing → fails.
+        CHECK C: Neither A nor B satisfied → Sub-case C3. STOP.
+        NOTE: The user did not mention any laptop. Do NOT default to the first laptop. Do NOT proceed.
+
+Output:
+{"next": "email", "messages": "check_category('laptop') returned UUID 9198f973-dfe3-40e0-8275-3e441cabd0dd. Multiple laptops found for user_id u-abc-123: LP-07 (ASSIGNED, NYATI), LP-12 (ASSIGNED, GAIA). No laptop mentioned in email at all; CHECK A fails. No 'both'/'all' phrasing; CHECK B fails. Sub-case C3: STOP. Sent clarification email.", "email_response": "Thank you for your Postman installation request. We can see that you have two laptops assigned to your account — LP-07 (NYATI) and LP-12 (GAIA). Could you please let us know which laptop you'd like Postman installed on, or confirm if you'd like it on both? We'll process the request right away once you reply."}
+
+---
+
 SCENARIO H — Software not found in the database
 Input excerpt:
   email_subject: "Install SuperEditPro 2000"
@@ -582,7 +662,9 @@ FINAL REMINDERS
 11. Do not fabricate asset data. Report exactly what the tools return.
 12. If user_asset returns 2+ laptops and the user has NOT specified a target laptop (no asset
     code mentioned, no "both"/"all"), STOP and send a clarification email listing all their
-    asset codes. Do NOT guess or default to the first laptop in the list.
+    asset codes. Do NOT guess or default to the first laptop in the list. Saying "my laptop"
+    without an explicit asset code (e.g. "LP-07") is NOT specifying a laptop — always treat
+    it as Sub-case C3 and STOP.
 13. Call check_user_asset_code ONLY when: user_asset returned 2+ laptops AND the user
     explicitly named exactly one asset code. For "both"/"all" requests, skip this tool
     entirely and use all asset codes directly.
