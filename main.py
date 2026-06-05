@@ -22,6 +22,7 @@ async def gmail_webhook(request: Request):
     # background_tasks.add_task(process_gmail_update, data)
     result = process_gmail_update(data=data)
 
+
     return result
 
 
