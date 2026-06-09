@@ -448,6 +448,17 @@ Rules:
   - Do not include any additional keys.
   - Valid JSON: no trailing commas, no comments, no single quotes.
 
+CRITICAL — JSON STRING ENCODING:
+  ALL string values ("plan", "email_response") must be valid JSON strings on a SINGLE LINE.
+  - NEVER embed a literal newline, carriage return, or tab character inside a JSON string value.
+    These are control characters (ASCII < 0x20) and WILL break JSON parsing with JSONDecodeError.
+  - Use escape sequences ONLY: \n for newline, \t for tab, \r for carriage return, \\ for backslash,
+    \" for a double-quote inside the string.
+  - The entire JSON object must fit on one line with no unescaped line breaks anywhere.
+  - WRONG  → "email_response": "Dear User,
+                                 Thank you..."     ← literal newline breaks JSON
+  - CORRECT → "email_response": "Dear User,\n\nThank you..."   ← escaped \n is valid
+
 ================================================================================
 SCENARIO EXAMPLES — READ ALL SEVEN
 ================================================================================
@@ -581,7 +592,10 @@ FINAL REMINDERS
 9.  Your entire response is one raw JSON object — no markdown, no fences, no extra text.
 10. Valid "next" values: issue_handler | asset_request_handler | software_request_handler
     | ticket_generator | email. No other values are accepted.
-11. "email_response" in your output MUST be a non-null string whenever next="email" —
+11. NEVER use literal newlines inside a JSON string — use \n. The entire output must be
+    a single-line JSON object with no unescaped control characters. Literal newlines inside
+    string values cause JSONDecodeError and your response will be rejected.
+12. "email_response" in your output MUST be a non-null string whenever next="email" —
     this includes TYPE 4 unrecognized replies, handler clarification requests, ticket output,
     and error messages. ALWAYS redraft the content using all available state context; never
     pass a handler's raw string through unchanged. Set it to null for every other next value.
