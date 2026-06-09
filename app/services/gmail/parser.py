@@ -1,5 +1,7 @@
 import base64
 import json
+import re
+from email_reply_parser import EmailReplyParser
 from app.services.gmail.auth import get_gmail_service
 from app.config.state import AgentState
 from app.workflows.mail_assistant.graph.builder import graph
@@ -15,7 +17,6 @@ def parse_email_body(payload):
     body = ""
     if "parts" in payload:
         for part in payload["parts"]:
-            # If it's a multipart, recurse deeper
             if part["mimeType"] == "text/plain":
                 data = part["body"].get("data")
                 if data:
@@ -23,7 +24,6 @@ def parse_email_body(payload):
             elif "parts" in part:
                 body += parse_email_body(part)
     elif "body" in payload:
-        # If it's not multipart, the body is directly here
         data = payload["body"].get("data")
         if data:
             body += base64.urlsafe_b64decode(data).decode("utf-8")
@@ -47,12 +47,10 @@ def process_gmail_update(data: dict):
     decoded_data = base64.b64decode(encoded_data).decode("utf-8")
     json_data = json.loads(decoded_data)
     print(json_data)
-    # The historyId tells us a change occurred
     history_id = json_data.get("historyId")
     print(f"\n--- Update Received (History ID: {history_id}) ---")
 
     # 2. Fetch the latest email from the Inbox
-    # We restrict this to 'INBOX' to avoid picking up Sent items or Drafts
     results = (
         service.users()
         .messages()
@@ -61,29 +59,33 @@ def process_gmail_update(data: dict):
     )
 
     messages = results.get("messages", [])
-
     if not messages:
         print("No messages found in Inbox.")
         return
 
-    # Get the specific message ID
     msg_id = messages[0]["id"]
 
     # 3. Get the full details of that message
     msg = service.users().messages().get(userId="me", id=msg_id).execute()
     payload = msg["payload"]
     headers = payload["headers"]
+
     state["thread_id"] = msg.get("threadId")
-    # 4. Extract Metadata
+    state["original_msg_id"] = next(
+        (h["value"] for h in headers if h["name"] == "Message-ID"), ""
+    )
+
+    # 4. Extract metadata
     state["email_subject"] = next(
         (h["value"] for h in headers if h["name"] == "Subject"), "No Subject"
     )
-    sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown")
-    state["sender_email"] = sender[(sender.index("<")) + 1 : (sender.index(">"))]
+    sender = next((h["value"] for h in headers if h["name"] == "From"), "")
+    match = re.search(r"<(.+?)>", sender)
+    state["sender_email"] = match.group(1) if match else sender.strip()
 
-    # 5. Extract Body
+    # 5. Extract body — strip signatures and quoted history
     email_text = parse_email_body(payload)
-    deletion_text = email_text[email_text.find("\n") :]
-    state["email_body"] = email_text.replace(deletion_text, " ")
+    state["email_body"] = EmailReplyParser.parse_reply(email_text).strip()
+
     result = graph.invoke(state)
     return result

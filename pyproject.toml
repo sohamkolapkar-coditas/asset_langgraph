@@ -20,5 +20,6 @@ dependencies = [
     "google-auth (>=2.47.0,<3.0.0)",
     "google-auth-oauthlib (>=1.2.4)",
     "langchain (>=1.2.0,<2.0.0)",
-    "deepagents (>=0.3.9,<0.4.0)"
+    "deepagents (>=0.3.9,<0.4.0)",
+    "email-reply-parser>=0.5.12",
 ]

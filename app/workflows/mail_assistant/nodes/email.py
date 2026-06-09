@@ -8,9 +8,9 @@ def send_email(state: AgentState):
     service = get_gmail_service()
     message = MIMEText(state["email_response"])
     message["to"] = state["sender_email"]
-
-    # message["In-Reply-To"] = state["original_msg_id"]
-    # message["References"] = state["original_msg_id"]
+    message["subject"] = f"Re: {state['email_subject']}"
+    message["In-Reply-To"] = state["original_msg_id"]
+    message["References"] = state["original_msg_id"]
 
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
