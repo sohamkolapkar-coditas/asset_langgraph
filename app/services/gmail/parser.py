@@ -17,13 +17,21 @@ _processed_ids: set[str] = set()
 
 
 def _load_history_id() -> str | None:
-    if os.path.exists(HISTORY_ID_FILE):
+    if not os.path.isfile(HISTORY_ID_FILE):
+        return None
+    try:
         value = open(HISTORY_ID_FILE).read().strip()
         return value or None
-    return None
+    except OSError:
+        return None
 
 
 def _save_history_id(history_id: str) -> None:
+    # Guard: if a directory was accidentally created at this path (Docker bind-mount
+    # creates a dir when the host file is missing), remove it first.
+    if os.path.isdir(HISTORY_ID_FILE):
+        import shutil
+        shutil.rmtree(HISTORY_ID_FILE)
     with open(HISTORY_ID_FILE, "w") as f:
         f.write(history_id)
 
