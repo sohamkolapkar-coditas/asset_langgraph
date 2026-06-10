@@ -16,7 +16,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd /home/${{ secrets.EC2_USER }}/asset_langgraph_assignment
+            cd /home/${{ secrets.EC2_USER }}/asset_langgraph
             git pull origin main
             docker compose up -d --build --remove-orphans
             docker image prune -f
