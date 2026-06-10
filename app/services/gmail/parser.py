@@ -76,33 +76,33 @@ def process_gmail_update(data: dict):
     print(f"\n--- Pub/Sub notification (historyId: {new_history_id}) ---")
 
     last_history_id = _load_history_id()
-    if not last_history_id:
-        # No baseline yet — save this ID and wait for the next notification.
-        # Processing now would require fetching the full inbox which risks replays.
-        print("No prior historyId on record — saving baseline, skipping this notification.")
-        _save_history_id(new_history_id)
-        return
 
-    # Fetch history records for messages added to INBOX since last known ID.
+    # history.list(startHistoryId=X) is exclusive — it returns records AFTER X.
+    # If we have no prior baseline (e.g. /refresh was never called), derive the start
+    # as new_history_id - 1 so the current event is included in the result.
+    start_id = last_history_id if last_history_id else str(int(new_history_id) - 1)
+    if not last_history_id:
+        print("No prior historyId — using derived start, will process current notification.")
+
+    # Advance the cursor BEFORE processing so a crash or retry doesn't replay the batch.
+    _save_history_id(new_history_id)
+
+    # Fetch history records for messages added to INBOX since start_id.
     try:
         history_response = (
             service.users()
             .history()
             .list(
                 userId="me",
-                startHistoryId=last_history_id,
+                startHistoryId=start_id,
                 historyTypes=["messageAdded"],
                 labelId="INBOX",
             )
             .execute()
         )
     except Exception as exc:
-        print(f"history.list failed: {exc} — advancing historyId to avoid replay.")
-        _save_history_id(new_history_id)
+        print(f"history.list failed: {exc}")
         return
-
-    # Advance the cursor BEFORE processing so a crash doesn't replay the same batch.
-    _save_history_id(new_history_id)
 
     history_records = history_response.get("history", [])
     if not history_records:
