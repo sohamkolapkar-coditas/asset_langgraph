@@ -17,5 +17,12 @@ def watch_gmail():
     response = service.users().watch(userId='me', body=request).execute()
     print("Watch setup successful:", response)
 
+    # Persist the starting historyId so process_gmail_update has a baseline.
+    history_id = response.get("historyId")
+    if history_id:
+        with open("last_history_id.txt", "w") as f:
+            f.write(str(history_id))
+        print(f"Saved baseline historyId: {history_id}")
+
 if __name__ == '__main__':
     watch_gmail()

@@ -25,6 +25,7 @@ services:
     volumes:
       - ./credentials.json:/app/credentials.json:ro
       - ./token.json:/app/token.json
+      - ./last_history_id.txt:/app/last_history_id.txt
     ports:
       - "8000:8000"
     depends_on:

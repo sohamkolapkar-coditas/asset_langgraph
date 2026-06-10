@@ -1,6 +1,7 @@
 .env
 .env.*
 token.json
+last_history_id.txt
 __pycache__
 *.pyc
 .git
