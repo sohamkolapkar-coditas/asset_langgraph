@@ -2,7 +2,7 @@ FROM python:3.13-slim
 
 # Install system deps needed by psycopg2
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev curl && rm -rf /var/lib/apt/lists/*
+    build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*
 
 # Install UV
 RUN pip install uv

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     DB_HOST: str
     SCOPE: str
     PROJECT_ID: str
+    NGROK_AUTHTOKEN: str
 
     class Config:
         env_file = ".env"
