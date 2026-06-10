@@ -21,10 +21,10 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DB_HOST: db        # override localhost → docker service name
+      DB_HOST: db
     volumes:
       - ./credentials.json:/app/credentials.json:ro
-      - token_store:/app   # token.json persisted across restarts
+      - token_store:/app
     ports:
       - "8000:8000"
     depends_on:
@@ -38,7 +38,7 @@ services:
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
     ports:
-      - "4040:4040"   # ngrok inspector UI
+      - "4040:4040"
     depends_on:
       - app
 
